@@ -21,6 +21,8 @@ class Command:
             openai,
             reply_in_thread,
             system_prompt: str = None,
+            injected_system_prompt: str = None,
+            log_full_response: bool = False
     ):
         """A command made by a user.
 
@@ -47,6 +49,8 @@ class Command:
         self.openai = openai
         self.reply_in_thread = reply_in_thread
         self.system_prompt = system_prompt
+        self.injected_system_prompt = injected_system_prompt
+        self.log_full_response = log_full_response
 
     async def process(self):
         """Process the command"""
@@ -62,7 +66,7 @@ class Command:
             await self._process_chat()
 
     async def _process_chat(self):
-        await process_chat(self.client, self.room, self.event, self.command, self.store, self.openai, system_prompt=self.system_prompt)
+        await process_chat(self.client, self.room, self.event, self.command, self.store, self.openai, system_prompt=self.system_prompt, injected_system_prompt=self.injected_system_prompt, log_full_response=self.log_full_response)
 
     async def _show_help(self):
         """Show the help text"""

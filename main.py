@@ -89,7 +89,18 @@ async def main():
     storage = Storage(Path(config_data['data_storage'], 'matrixgpt.db'))
 
     # Set up event callbacks
-    callbacks = Callbacks(client, storage, config_data['command_prefix'], openai_config, config_data.get('reply_in_thread', False), config_data['allowed_to_invite'], config_data['allowed_to_chat'], config_data.get('system_prompt'))
+    callbacks = Callbacks(
+        client,
+        storage,
+        config_data['command_prefix'],
+        openai_config,
+        config_data.get('reply_in_thread', False),
+        config_data['allowed_to_invite'],
+        config_data['allowed_to_chat'],
+        config_data.get('system_prompt'),
+        log_full_response=config_data.get('log_full_response', False),
+        injected_system_prompt=config_data.get('injected_system_prompt', False)
+    )
     client.add_event_callback(callbacks.message, RoomMessageText)
     client.add_event_callback(callbacks.invite_event_filtered_callback, InviteMemberEvent)
     client.add_event_callback(callbacks.decryption_failure, MegolmEvent)
@@ -154,6 +165,8 @@ if __name__ == "__main__":
     while True:
         try:
             asyncio.run(main())
+        except KeyboardInterrupt:
+            sys.exit()
         except Exception:
             logger.critical(traceback.format_exc())
             time.sleep(5)

@@ -2,29 +2,12 @@ import logging
 from typing import List, Optional, Union
 
 from markdown import markdown
-from nio import (
-    AsyncClient,
-    ErrorResponse,
-    Event, MatrixRoom,
-    MegolmEvent,
-    Response,
-    RoomMessageText, RoomSendResponse,
-    SendRetryError,
-)
+from nio import (AsyncClient, ErrorResponse, Event, MatrixRoom, MegolmEvent, Response, RoomMessageText, RoomSendResponse, SendRetryError, )
 
 logger = logging.getLogger('MatrixGPT')
 
 
-async def send_text_to_room(
-        client: AsyncClient,
-        room_id: str,
-        message: str,
-        notice: bool = False,
-        markdown_convert: bool = True,
-        reply_to_event_id: Optional[str] = None,
-        thread: bool = False,
-        thread_root_id: str = None
-) -> Union[RoomSendResponse, ErrorResponse]:
+async def send_text_to_room(client: AsyncClient, room_id: str, message: str, notice: bool = False, markdown_convert: bool = True, reply_to_event_id: Optional[str] = None, thread: bool = False, thread_root_id: str = None) -> Union[RoomSendResponse, ErrorResponse]:
     """Send text to a matrix room.
 
     Args:
@@ -49,35 +32,19 @@ async def send_text_to_room(
     # Determine whether to ping room members or not
     msgtype = "m.notice" if notice else "m.text"
 
-    content = {
-        "msgtype": msgtype,
-        "format": "org.matrix.custom.html",
-        "body": message,
-    }
+    content = {"msgtype": msgtype, "format": "org.matrix.custom.html", "body": message, }
 
     if markdown_convert:
         content["formatted_body"] = markdown(message)
 
     if reply_to_event_id:
         if thread:
-            content["m.relates_to"] = {
-                'event_id': thread_root_id,
-                'is_falling_back': True,
-                "m.in_reply_to": {
-                    "event_id": reply_to_event_id
-                },
-                'rel_type': "m.thread"
-            }
+            content["m.relates_to"] = {'event_id': thread_root_id, 'is_falling_back': True, "m.in_reply_to": {"event_id": reply_to_event_id}, 'rel_type': "m.thread"}
         else:
             content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to_event_id}}
 
     try:
-        return await client.room_send(
-            room_id,
-            "m.room.message",
-            content,
-            ignore_unverified_devices=True,
-        )
+        return await client.room_send(room_id, "m.room.message", content, ignore_unverified_devices=True, )
     except SendRetryError:
         logger.exception(f"Unable to send message response to {room_id}")
 
@@ -102,12 +69,7 @@ def make_pill(user_id: str, displayname: str = None) -> str:
     return f'<a href="https://matrix.to/#/{user_id}">{displayname}</a>'
 
 
-async def react_to_event(
-        client: AsyncClient,
-        room_id: str,
-        event_id: str,
-        reaction_text: str,
-) -> Union[Response, ErrorResponse]:
+async def react_to_event(client: AsyncClient, room_id: str, event_id: str, reaction_text: str, ) -> Union[Response, ErrorResponse]:
     """Reacts to a given event in a room with the given reaction text
 
     Args:
@@ -125,20 +87,9 @@ async def react_to_event(
     Raises:
         SendRetryError: If the reaction was unable to be sent.
     """
-    content = {
-        "m.relates_to": {
-            "rel_type": "m.annotation",
-            "event_id": event_id,
-            "key": reaction_text,
-        }
-    }
+    content = {"m.relates_to": {"rel_type": "m.annotation", "event_id": event_id, "key": reaction_text, }}
 
-    return await client.room_send(
-        room_id,
-        "m.reaction",
-        content,
-        ignore_unverified_devices=True,
-    )
+    return await client.room_send(room_id, "m.reaction", content, ignore_unverified_devices=True, )
 
 
 async def decryption_failure(self, room: MatrixRoom, event: MegolmEvent) -> None:
@@ -153,21 +104,23 @@ async def decryption_failure(self, room: MatrixRoom, event: MegolmEvent) -> None
     #     f"commands a second time)."
     # )
 
-    user_msg = (
-        "Unable to decrypt this message. "
-        "Check whether you've chosen to only encrypt to trusted devices."
-    )
+    user_msg = ("Unable to decrypt this message. "
+                "Check whether you've chosen to only encrypt to trusted devices.")
 
-    await send_text_to_room(
-        self.client,
-        room.room_id,
-        user_msg,
-        reply_to_event_id=event.event_id,
-    )
+    await send_text_to_room(self.client, room.room_id, user_msg, reply_to_event_id=event.event_id, )
 
 
 def is_thread(event: RoomMessageText):
     return event.source['content'].get('m.relates_to', {}).get('rel_type') == 'm.thread'
+
+
+async def is_this_our_thread(client: AsyncClient, room: MatrixRoom, event: RoomMessageText, command_flag: str):
+    base_event_id = event.source['content'].get('m.relates_to', {}).get('event_id')
+    if base_event_id:
+        return (await client.room_get_event(room.room_id, base_event_id)).event.body.startswith(f'{command_flag} ')
+    else:
+        # Better safe than sorry
+        return False
 
 
 async def get_thread_content(client: AsyncClient, room: MatrixRoom, base_event: RoomMessageText) -> List[Event]:
@@ -184,7 +137,7 @@ async def get_thread_content(client: AsyncClient, room: MatrixRoom, base_event: 
     return messages
 
 
-async def process_chat(client, room, event, command, store, openai, thread_root_id: str = None, system_prompt: str = None):
+async def process_chat(client, room, event, command, store, openai, thread_root_id: str = None, system_prompt: str = None, log_full_response: bool = False, injected_system_prompt: bool = False):
     if not store.check_seen_event(event.event_id):
         await client.room_typing(room.room_id, typing_state=True, timeout=3000)
         # if self.reply_in_thread:
@@ -193,29 +146,44 @@ async def process_chat(client, room, event, command, store, openai, thread_root_
         if isinstance(command, list):
             messages = command
         else:
-            messages = [
-                {'role': 'user', 'content': command},
-            ]
-        if system_prompt:
-            messages.insert(0, {"role": "system", "content": system_prompt}, )
-        print(messages)
+            messages = [{'role': 'user', 'content': command}, ]
 
-        response = openai['openai'].ChatCompletion.create(
-            model=openai['model'],
-            messages=messages,
-            temperature=0,
-        )
+        if system_prompt:
+            messages.insert(0, {"role": "system", "content": system_prompt})
+        if injected_system_prompt:
+            if messages[-1]['role'] == 'system':
+                del messages[-1]
+            index = -9999
+            if len(messages) >= 2:
+                index = -1
+            elif not system_prompt:
+                index = 0
+            print(index)
+            if index != -9999:
+                messages.insert(index, {"role": "system", "content": injected_system_prompt})
+
+        response = openai['openai'].ChatCompletion.create(model=openai['model'], messages=messages, temperature=0, )
         text_response = response["choices"][0]["message"]["content"].strip().strip('\n')
-        logger.info(f'Reply to {event.event_id} --> "{command}" and bot responded with "{text_response}"')
+
+        if log_full_response:
+            logger.debug({'event_id': event.event_id, 'room': room.room_id, 'messages': messages, 'response': text_response})
+        z = text_response.replace("\n", "\\n")
+        if isinstance(command, str):
+            x = command.replace("\n", "\\n")
+        elif isinstance(command, list):
+            x = command[-1]['content'].replace("\n", "\\n")
+        else:
+            x = command
+        logger.info(f'Reply to {event.event_id} --> "{x}" and bot responded with "{z}"')
+
         resp = await send_text_to_room(client, room.room_id, text_response, reply_to_event_id=event.event_id, thread=True, thread_root_id=thread_root_id if thread_root_id else event.event_id)
         await client.room_typing(room.room_id, typing_state=False, timeout=3000)
+
         store.add_event_id(event.event_id)
         if not isinstance(resp, RoomSendResponse):
             logger.critical(f'Failed to respond to event {event.event_id} in room {room.room_id}:\n{vars(resp)}')
         else:
             store.add_event_id(resp.event_id)
-    # else:
-    #     logger.info(f'Not responding to seen event {event.event_id}')
 
 
 def check_authorized(string, to_check):
@@ -237,7 +205,6 @@ def check_authorized(string, to_check):
     elif isinstance(to_check, list):
         output = False
         for item in to_check:
-            print(string, item, check_str(string, item))
             if check_str(string, item):
                 output = True
         return output

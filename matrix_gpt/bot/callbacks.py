@@ -5,7 +5,7 @@ import time
 from nio import (AsyncClient, InviteMemberEvent, JoinError, MatrixRoom, MegolmEvent, RoomMessageText, UnknownEvent, )
 
 from .bot_commands import Command
-from .chat_functions import check_authorized, get_thread_content, is_thread, process_chat, react_to_event, send_text_to_room
+from .chat_functions import check_authorized, get_thread_content, is_this_our_thread, is_thread, process_chat, react_to_event, send_text_to_room
 # from .config import Config
 from .storage import Storage
 
@@ -13,7 +13,7 @@ logger = logging.getLogger('MatrixGPT')
 
 
 class Callbacks:
-    def __init__(self, client: AsyncClient, store: Storage, command_prefix: str, openai, reply_in_thread, allowed_to_invite, allowed_to_chat='all', system_prompt: str = None, ):
+    def __init__(self, client: AsyncClient, store: Storage, command_prefix: str, openai, reply_in_thread, allowed_to_invite, allowed_to_chat='all', system_prompt: str = None, log_full_response: bool = False, injected_system_prompt: bool = False):
         """
         Args:
             client: nio client used to interact with matrix.
@@ -32,6 +32,8 @@ class Callbacks:
         self.allowed_to_invite = allowed_to_invite if allowed_to_invite else []
         self.allowed_to_chat = allowed_to_chat
         self.system_prompt = system_prompt
+        self.log_full_response = log_full_response
+        self.injected_system_prompt = injected_system_prompt
 
     async def message(self, room: MatrixRoom, event: RoomMessageText) -> None:
         """Callback for when a message event is received
@@ -42,7 +44,7 @@ class Callbacks:
             event: The event defining the message.
         """
         # Extract the message text
-        msg = event.body
+        msg = event.body.strip().strip('\n')
 
         logger.debug(f"Bot message received for room {room.display_name} | "
                      f"{room.user_name(event.sender)}: {msg}")
@@ -70,7 +72,7 @@ class Callbacks:
         # room.member_count > 2 ... we assume a public room
         # room.member_count <= 2 ... we assume a DM
         # General message listener
-        if not msg.startswith(f'{self.command_prefix} ') and is_thread(event) and not self.store.check_seen_event(event.event_id):
+        if not msg.startswith(f'{self.command_prefix} ') and is_thread(event) and not self.store.check_seen_event(event.event_id) and (await is_this_our_thread(self.client, room, event, self.command_prefix)):
             await self.client.room_typing(room.room_id, typing_state=True, timeout=3000)
             thread_content = await get_thread_content(self.client, room, event)
             api_data = []
@@ -82,20 +84,19 @@ class Callbacks:
                     self.store.add_event_id(resp.event_id)
                     return
                 else:
-                    api_data.append({
-                        'role': 'assistant' if event.sender == self.client.user_id else 'user',
-                        'content': event.body if not event.body.startswith(self.command_prefix) else event.body[len(self.command_prefix):].strip()
-                    })  # if len(thread_content) >= 2 and thread_content[0].body.startswith(self.command_prefix):  # if thread_content[len(thread_content) - 2].sender == self.client.user
+                    thread_msg = event.body.strip().strip('\n')
+                    api_data.append({'role': 'assistant' if event.sender == self.client.user_id else 'user', 'content': thread_msg if not thread_msg.startswith(self.command_prefix) else thread_msg[
+                                                                                                                                                                                          len(self.command_prefix):].strip()})  # if len(thread_content) >= 2 and thread_content[0].body.startswith(self.command_prefix):  # if thread_content[len(thread_content) - 2].sender == self.client.user
 
             # message = Message(self.client, self.store, msg, room, event, self.reply_in_thread)
             # await message.process()
-            api_data.append({'role': 'user', 'content': event.body})
-            await process_chat(self.client, room, event, api_data, self.store, self.openai, thread_root_id=thread_content[0].event_id, system_prompt=self.system_prompt)
+            # api_data.append({'role': 'user', 'content': msg})
+            await process_chat(self.client, room, event, api_data, self.store, self.openai, thread_root_id=thread_content[0].event_id, system_prompt=self.system_prompt, log_full_response=self.log_full_response, injected_system_prompt=self.injected_system_prompt)
             return
         elif msg.startswith(f'{self.command_prefix} ') or room.member_count == 2:
             # Otherwise if this is in a 1-1 with the bot or features a command prefix, treat it as a command.
-            msg = event.body if not event.body.startswith(self.command_prefix) else event.body[len(self.command_prefix):].strip()  # Remove the command prefix
-            command = Command(self.client, self.store, msg, room, event, self.openai, self.reply_in_thread, system_prompt=self.system_prompt)
+            msg = msg if not msg.startswith(self.command_prefix) else msg[len(self.command_prefix):].strip()  # Remove the command prefix
+            command = Command(self.client, self.store, msg, room, event, self.openai, self.reply_in_thread, system_prompt=self.system_prompt, injected_system_prompt=self.injected_system_prompt, log_full_response=self.log_full_response)
             await command.process()
 
     async def invite(self, room: MatrixRoom, event: InviteMemberEvent) -> None:
