@@ -133,4 +133,4 @@ if __name__ == "__main__":
             asyncio.run(main())
         except Exception:
             logger.critical(traceback.format_exc())
-            time.sleep(5)  # don't exit, keep going
+            time.sleep(5)

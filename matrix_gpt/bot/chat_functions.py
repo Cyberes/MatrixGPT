@@ -214,12 +214,27 @@ async def process_chat(client, room, event, command, store, openai, thread_root_
 
 
 def check_authorized(string, to_check):
-    if to_check != 'all':
-        if '@' not in to_check and ':' not in to_check:
-            # Homeserver
-            if string.split(':')[-1] not in to_check:
-                return False
-        elif string not in to_check:
-            # By username
-            return False
-    return True
+    def check_str(s, c):
+        if c != 'all':
+            if '@' not in c and ':' not in c:
+                # Homeserver
+                if s.split(':')[-1] in c:
+                    return True
+            elif s in c:
+                # By username
+                return True
+        elif c == 'all':
+            return True
+        return False
+
+    if isinstance(to_check, str):
+        return check_str(string, to_check)
+    elif isinstance(to_check, list):
+        output = False
+        for item in to_check:
+            print(string, item, check_str(string, item))
+            if check_str(string, item):
+                output = True
+        return output
+    else:
+        raise Exception
