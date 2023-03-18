@@ -2,7 +2,7 @@ import logging
 
 from nio import AsyncClient, MatrixRoom, RoomMessageText
 
-from .chat_functions import get_thread_content, process_chat, send_text_to_room
+from .chat_functions import process_chat, send_text_to_room
 # from .config import Config
 from .storage import Storage
 
@@ -19,7 +19,8 @@ class Command:
             room: MatrixRoom,
             event: RoomMessageText,
             openai,
-            reply_in_thread
+            reply_in_thread,
+            system_prompt: str = None,
     ):
         """A command made by a user.
 
@@ -45,6 +46,7 @@ class Command:
         self.args = self.command.split()[1:]
         self.openai = openai
         self.reply_in_thread = reply_in_thread
+        self.system_prompt = system_prompt
 
     async def process(self):
         """Process the command"""
@@ -60,7 +62,7 @@ class Command:
             await self._process_chat()
 
     async def _process_chat(self):
-        await process_chat(self.client, self.room, self.event, self.command, self.store, self.openai)
+        await process_chat(self.client, self.room, self.event, self.command, self.store, self.openai, system_prompt=self.system_prompt)
 
     async def _show_help(self):
         """Show the help text"""

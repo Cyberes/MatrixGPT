@@ -5,7 +5,7 @@ import time
 from nio import (AsyncClient, InviteMemberEvent, JoinError, MatrixRoom, MegolmEvent, RoomMessageText, UnknownEvent, )
 
 from .bot_commands import Command
-from .chat_functions import check_authorized, get_thread_content, is_thread, process_chat, react_to_event
+from .chat_functions import check_authorized, get_thread_content, is_thread, process_chat, react_to_event, send_text_to_room
 # from .config import Config
 from .storage import Storage
 
@@ -13,7 +13,7 @@ logger = logging.getLogger('MatrixGPT')
 
 
 class Callbacks:
-    def __init__(self, client: AsyncClient, store: Storage, command_prefix: str, openai, reply_in_thread, allowed_to_invite, allowed_to_chat='all'):
+    def __init__(self, client: AsyncClient, store: Storage, command_prefix: str, openai, reply_in_thread, allowed_to_invite, allowed_to_chat='all', system_prompt: str = None, ):
         """
         Args:
             client: nio client used to interact with matrix.
@@ -31,6 +31,7 @@ class Callbacks:
         self.reply_in_thread = reply_in_thread
         self.allowed_to_invite = allowed_to_invite if allowed_to_invite else []
         self.allowed_to_chat = allowed_to_chat
+        self.system_prompt = system_prompt
 
     async def message(self, room: MatrixRoom, event: RoomMessageText) -> None:
         """Callback for when a message event is received
@@ -69,24 +70,32 @@ class Callbacks:
         # room.member_count > 2 ... we assume a public room
         # room.member_count <= 2 ... we assume a DM
         # General message listener
-        if not msg.startswith(self.command_prefix) and is_thread(event) and not self.store.check_seen_event(event.event_id):
+        if not msg.startswith(f'{self.command_prefix} ') and is_thread(event) and not self.store.check_seen_event(event.event_id):
             await self.client.room_typing(room.room_id, typing_state=True, timeout=3000)
             thread_content = await get_thread_content(self.client, room, event)
             api_data = []
             for event in thread_content:
-                api_data.append({'role': 'assistant' if event.sender == self.client.user_id else 'user', 'content': event.body if not event.body.startswith(self.command_prefix) else event.body[
-                                                                                                                                                                                      len(self.command_prefix):].strip()})  # if len(thread_content) >= 2 and thread_content[0].body.startswith(self.command_prefix):  # if thread_content[len(thread_content) - 2].sender == self.client.user
+                if isinstance(event, MegolmEvent):
+                    resp = await send_text_to_room(self.client, room.room_id, '❌ 🔐 Decryption Failure', reply_to_event_id=event.event_id, thread=True, thread_root_id=thread_content[0].event_id)
+                    logger.critical(f'Decryption failure for event {event.event_id} in room {room.room_id}')
+                    await self.client.room_typing(room.room_id, typing_state=False, timeout=3000)
+                    self.store.add_event_id(resp.event_id)
+                    return
+                else:
+                    api_data.append({
+                        'role': 'assistant' if event.sender == self.client.user_id else 'user',
+                        'content': event.body if not event.body.startswith(self.command_prefix) else event.body[len(self.command_prefix):].strip()
+                    })  # if len(thread_content) >= 2 and thread_content[0].body.startswith(self.command_prefix):  # if thread_content[len(thread_content) - 2].sender == self.client.user
 
             # message = Message(self.client, self.store, msg, room, event, self.reply_in_thread)
             # await message.process()
             api_data.append({'role': 'user', 'content': event.body})
-            await process_chat(self.client, room, event, api_data, self.store, self.openai, thread_root_id=thread_content[0].event_id)
+            await process_chat(self.client, room, event, api_data, self.store, self.openai, thread_root_id=thread_content[0].event_id, system_prompt=self.system_prompt)
             return
-        elif msg.startswith(self.command_prefix) or room.member_count == 2:
-            # Otherwise if this is in a 1-1 with the bot or features a command prefix,
-            # treat it as a command
+        elif msg.startswith(f'{self.command_prefix} ') or room.member_count == 2:
+            # Otherwise if this is in a 1-1 with the bot or features a command prefix, treat it as a command.
             msg = event.body if not event.body.startswith(self.command_prefix) else event.body[len(self.command_prefix):].strip()  # Remove the command prefix
-            command = Command(self.client, self.store, msg, room, event, self.openai, self.reply_in_thread)
+            command = Command(self.client, self.store, msg, room, event, self.openai, self.reply_in_thread, system_prompt=self.system_prompt)
             await command.process()
 
     async def invite(self, room: MatrixRoom, event: InviteMemberEvent) -> None:
@@ -181,18 +190,17 @@ class Callbacks:
 
             event: The encrypted event that we were unable to decrypt.
         """
-        logger.error(f"Failed to decrypt event '{event.event_id}' in room '{room.room_id}'!"
-                     f"\n\n"
-                     f"Tip: try using a different device ID in your config file and restart."
-                     f"\n\n"
-                     f"If all else fails, delete your store directory and let the bot recreate "
-                     f"it (your reminders will NOT be deleted, but the bot may respond to existing "
-                     f"commands a second time).")
+        # logger.error(f"Failed to decrypt event '{event.event_id}' in room '{room.room_id}'!"
+        #              f"\n\n"
+        #              f"Tip: try using a different device ID in your config file and restart."
+        #              f"\n\n"
+        #              f"If all else fails, delete your store directory and let the bot recreate "
+        #              f"it (your reminders will NOT be deleted, but the bot may respond to existing "
+        #              f"commands a second time).")
 
-        red_x_and_lock_emoji = "❌ 🔐"
-
-        # React to the undecryptable event with some emoji
-        await react_to_event(self.client, room.room_id, event.event_id, red_x_and_lock_emoji, )
+        if event.server_timestamp > self.startup_ts:
+            logger.critical(f'Decryption failure for event {event.event_id} in room {room.room_id}')
+            await react_to_event(self.client, room.room_id, event.event_id, "❌ 🔐")
 
     async def unknown(self, room: MatrixRoom, event: UnknownEvent) -> None:
         """Callback for when an event with a type that is unknown to matrix-nio is received.

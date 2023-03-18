@@ -184,7 +184,7 @@ async def get_thread_content(client: AsyncClient, room: MatrixRoom, base_event: 
     return messages
 
 
-async def process_chat(client, room, event, command, store, openai, thread_root_id: str = None):
+async def process_chat(client, room, event, command, store, openai, thread_root_id: str = None, system_prompt: str = None):
     if not store.check_seen_event(event.event_id):
         await client.room_typing(room.room_id, typing_state=True, timeout=3000)
         # if self.reply_in_thread:
@@ -196,19 +196,24 @@ async def process_chat(client, room, event, command, store, openai, thread_root_
             messages = [
                 {'role': 'user', 'content': command},
             ]
+        if system_prompt:
+            messages.insert(0, {"role": "system", "content": system_prompt}, )
+        print(messages)
 
         response = openai['openai'].ChatCompletion.create(
             model=openai['model'],
             messages=messages,
             temperature=0,
         )
-        logger.debug(response)
         text_response = response["choices"][0]["message"]["content"].strip().strip('\n')
         logger.info(f'Reply to {event.event_id} --> "{command}" and bot responded with "{text_response}"')
         resp = await send_text_to_room(client, room.room_id, text_response, reply_to_event_id=event.event_id, thread=True, thread_root_id=thread_root_id if thread_root_id else event.event_id)
         await client.room_typing(room.room_id, typing_state=False, timeout=3000)
         store.add_event_id(event.event_id)
-        store.add_event_id(resp.event_id)
+        if not isinstance(resp, RoomSendResponse):
+            logger.critical(f'Failed to respond to event {event.event_id} in room {room.room_id}:\n{vars(resp)}')
+        else:
+            store.add_event_id(resp.event_id)
     # else:
     #     logger.info(f'Not responding to seen event {event.event_id}')
 

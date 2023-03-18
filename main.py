@@ -7,6 +7,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
+from uuid import uuid4
 
 import openai
 import yaml
@@ -65,13 +66,16 @@ def retry(msg=None):
 
 
 async def main():
+    # Logging in with a new device each time seems to fix encryption errors
+    device_id = config_data['bot_auth'].get('device_id', str(uuid4()))
+
     matrix_helper = MatrixNioGPTHelper(
         auth_file=Path(config_data['bot_auth']['store_path'], 'bot_auth.json'),
         user_id=config_data['bot_auth']['username'],
         passwd=config_data['bot_auth']['password'],
         homeserver=config_data['bot_auth']['homeserver'],
         store_path=config_data['bot_auth']['store_path'],
-        device_id=config_data['bot_auth'].get('device_id')
+        device_id=device_id,
     )
     client = matrix_helper.client
 
@@ -85,7 +89,7 @@ async def main():
     storage = Storage(Path(config_data['data_storage'], 'matrixgpt.db'))
 
     # Set up event callbacks
-    callbacks = Callbacks(client, storage, config_data['command_prefix'], openai_config, config_data.get('reply_in_thread', False), config_data['allowed_to_invite'], config_data['allowed_to_chat'])
+    callbacks = Callbacks(client, storage, config_data['command_prefix'], openai_config, config_data.get('reply_in_thread', False), config_data['allowed_to_invite'], config_data['allowed_to_chat'], config_data.get('system_prompt'))
     client.add_event_callback(callbacks.message, RoomMessageText)
     client.add_event_callback(callbacks.invite_event_filtered_callback, InviteMemberEvent)
     client.add_event_callback(callbacks.decryption_failure, MegolmEvent)
@@ -111,20 +115,39 @@ async def main():
                 return False
 
             # Login succeeded!
-            logger.info(f"Logged in as {client.user_id}")
+            logger.info(f"Logged in as {client.user_id} using device {device_id}.")
             if config_data.get('autojoin_rooms'):
                 for room in config_data.get('autojoin_rooms'):
                     r = await client.join(room)
                     if not isinstance(r, JoinResponse):
                         logger.critical(f'Failed to join room {room}: {vars(r)}')
+                    time.sleep(1.5)
+
+            # Log out old devices to keep the session clean
+            if config_data.get('logout_other_devices', False):
+                logger.info('Logging out other devices...')
+                devices = list((await client.devices()).devices)
+                device_list = [x.id for x in devices]
+                if device_id in device_list:
+                    device_list.remove(device_id)
+                    x = await client.delete_devices(device_list, {
+                        "type": "m.login.password",
+                        "user": config_data['bot_auth']['username'],
+                        "password": config_data['bot_auth']['password']
+                    })
+                logger.info(f'Logged out: {device_list}')
 
             await client.sync_forever(timeout=10000, full_state=True)
         except (ClientConnectionError, ServerDisconnectedError):
             logger.warning("Unable to connect to homeserver, retrying in 15s...")
             time.sleep(15)
-        finally:
+        except KeyboardInterrupt:
             await client.close()
             sys.exit()
+        except Exception:
+            logger.critical(traceback.format_exc())
+            logger.critical('Sleeping 5s...')
+            time.sleep(5)
 
 
 if __name__ == "__main__":

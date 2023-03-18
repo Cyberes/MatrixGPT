@@ -13,7 +13,7 @@ class MatrixNioGPTHelper:
     """
     client = None
 
-    client_config = AsyncClientConfig(max_limit_exceeded=0, max_timeouts=0, store_sync_tokens=True, encryption_enabled=True, )
+    client_config = AsyncClientConfig(max_limit_exceeded=0, max_timeouts=0, store_sync_tokens=True, encryption_enabled=True)
 
     def __init__(self, auth_file: Union[Path, str], user_id: str, passwd: str, homeserver: str, store_path: str, device_name: str = 'MatrixGPT', device_id: str = None):
         self.auth_file = auth_file

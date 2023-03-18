@@ -34,3 +34,9 @@ autojoin_rooms:
 command_prefix:    '!c'
 
 reply_in_thread:   true
+
+# The system message helps set the behavior of the assistant.
+# For example, you can instruct the assistant with "You are a helpful assistant."
+#system_prompt:
+
+logout_other_devices: false
