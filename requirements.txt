@@ -1,0 +1,5 @@
+matrix-nio[e2e]
+pyyaml
+markdown
+python-olm
+openai

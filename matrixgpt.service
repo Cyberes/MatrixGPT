@@ -1,0 +1,12 @@
+[Unit]
+Description=MatrixGPT bot.
+After=network.target
+
+[Service]
+User=matrix-bots
+WorkingDirectory=/opt/MatrixGPT/
+ExecStart=/opt/MatrixGPT/venv/bin/python3 /opt/MatrixGPT/main.py --config /etc/matrixgpt/config.yaml
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
