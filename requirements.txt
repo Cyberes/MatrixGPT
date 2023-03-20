@@ -3,3 +3,4 @@ pyyaml
 markdown
 python-olm
 openai
+stopit

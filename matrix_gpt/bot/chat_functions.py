@@ -1,6 +1,11 @@
+import asyncio
+import functools
 import logging
+import time
+from types import ModuleType
 from typing import List, Optional, Union
 
+import stopit
 from markdown import markdown
 from nio import (AsyncClient, ErrorResponse, Event, MatrixRoom, MegolmEvent, Response, RoomMessageText, RoomSendResponse, SendRetryError, )
 
@@ -12,22 +17,20 @@ async def send_text_to_room(client: AsyncClient, room_id: str, message: str, not
 
     Args:
         client: The client to communicate to matrix with.
-
         room_id: The ID of the room to send the message to.
-
         message: The message content.
-
         notice: Whether the message should be sent with an "m.notice" message type
             (will not ping users).
-
         markdown_convert: Whether to convert the message content to markdown.
             Defaults to true.
-
         reply_to_event_id: Whether this message is a reply to another event. The event
             ID this is message is a reply to.
+        thread:
+        thread_root_id:
 
     Returns:
         A RoomSendResponse if the request was successful, else an ErrorResponse.
+
     """
     # Determine whether to ping room members or not
     msgtype = "m.notice" if notice else "m.text"
@@ -44,7 +47,7 @@ async def send_text_to_room(client: AsyncClient, room_id: str, message: str, not
             content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to_event_id}}
 
     try:
-        return await client.room_send(room_id, "m.room.message", content, ignore_unverified_devices=True, )
+        return await client.room_send(room_id, "m.room.message", content, ignore_unverified_devices=True)
     except SendRetryError:
         logger.exception(f"Unable to send message response to {room_id}")
 
@@ -63,9 +66,7 @@ def make_pill(user_id: str, displayname: str = None) -> str:
         The formatted user pill.
     """
     if not displayname:
-        # Use the user ID as the displayname if not provided
         displayname = user_id
-
     return f'<a href="https://matrix.to/#/{user_id}">{displayname}</a>'
 
 
@@ -87,8 +88,7 @@ async def react_to_event(client: AsyncClient, room_id: str, event_id: str, react
     Raises:
         SendRetryError: If the reaction was unable to be sent.
     """
-    content = {"m.relates_to": {"rel_type": "m.annotation", "event_id": event_id, "key": reaction_text, }}
-
+    content = {"m.relates_to": {"rel_type": "m.annotation", "event_id": event_id, "key": reaction_text}}
     return await client.room_send(room_id, "m.reaction", content, ignore_unverified_devices=True, )
 
 
@@ -104,9 +104,7 @@ async def decryption_failure(self, room: MatrixRoom, event: MegolmEvent) -> None
     #     f"commands a second time)."
     # )
 
-    user_msg = ("Unable to decrypt this message. "
-                "Check whether you've chosen to only encrypt to trusted devices.")
-
+    user_msg = "Unable to decrypt this message. Check whether you've chosen to only encrypt to trusted devices."
     await send_text_to_room(self.client, room.room_id, user_msg, reply_to_event_id=event.event_id, )
 
 
@@ -119,7 +117,6 @@ async def is_this_our_thread(client: AsyncClient, room: MatrixRoom, event: RoomM
     if base_event_id:
         return (await client.room_get_event(room.room_id, base_event_id)).event.body.startswith(f'{command_flag} ')
     else:
-        # Better safe than sorry
         return False
 
 
@@ -137,16 +134,30 @@ async def get_thread_content(client: AsyncClient, room: MatrixRoom, base_event: 
     return messages
 
 
-async def process_chat(client, room, event, command, store, openai, thread_root_id: str = None, system_prompt: str = None, log_full_response: bool = False, injected_system_prompt: bool = False):
+async def process_chat(
+        client,
+        room,
+        event,
+        command,
+        store,
+        openai_obj: ModuleType,
+        openai_model: str,
+        openai_temperature: float,
+        openai_retries: int = 3,
+        thread_root_id: str = None,
+        system_prompt: str = None,
+        log_full_response: bool = False,
+        injected_system_prompt: str = False
+):
     if not store.check_seen_event(event.event_id):
-        await client.room_typing(room.room_id, typing_state=True, timeout=3000)
+        await client.room_typing(room.room_id, typing_state=True, timeout=90000)
         # if self.reply_in_thread:
         #     thread_content = await get_thread_content(self.client, self.room, self.event)
 
         if isinstance(command, list):
             messages = command
         else:
-            messages = [{'role': 'user', 'content': command}, ]
+            messages = [{'role': 'user', 'content': command}]
 
         if system_prompt:
             messages.insert(0, {"role": "system", "content": system_prompt})
@@ -154,19 +165,47 @@ async def process_chat(client, room, event, command, store, openai, thread_root_
             if messages[-1]['role'] == 'system':
                 del messages[-1]
             index = -9999
-            if len(messages) >= 2:
+            if len(messages) >= 3:  # only inject the system prompt if this isn't the first reply
                 index = -1
             elif not system_prompt:
                 index = 0
-            print(index)
             if index != -9999:
                 messages.insert(index, {"role": "system", "content": injected_system_prompt})
 
-        response = openai['openai'].ChatCompletion.create(model=openai['model'], messages=messages, temperature=0, )
+        logger.debug(f'Generating reply to event {event.event_id}')
+
+        loop = asyncio.get_running_loop()
+
+        # I don't think the OpenAI py api has a built-in timeout
+        @stopit.threading_timeoutable(default=(None, None))
+        async def generate():
+            return await loop.run_in_executor(None, functools.partial(openai_obj.ChatCompletion.create, model=openai_model, messages=messages, temperature=openai_temperature, timeout=20))
+            # r = openai_obj.ChatCompletion.create(model=openai_model, messages=messages, temperature=openai_temperature, timeout=20)
+
+        response = None
+        for i in range(openai_retries):
+            try:
+                task = asyncio.create_task(generate(timeout=20))
+                asyncio.as_completed(task)
+                response = await task
+                if response is not None:
+                    break
+            except Exception as e:  # (stopit.utils.TimeoutException, openai.error.APIConnectionError)
+                logger.warning(f'Got exception when generating response to event {event.event_id}, retrying: {e}')
+                await client.room_typing(room.room_id, typing_state=True, timeout=15000)
+                time.sleep(2)
+                continue
+
+        if response is None:
+            logger.critical(f'Could not generate response to event {event.event_id} in room {room.room_id}.')
+            await client.room_typing(room.room_id, typing_state=False, timeout=15000)
+            await react_to_event(client, room.room_id, event.event_id, '❌')
+            return
         text_response = response["choices"][0]["message"]["content"].strip().strip('\n')
 
+        # Logging stuff
         if log_full_response:
-            logger.debug({'event_id': event.event_id, 'room': room.room_id, 'messages': messages, 'response': text_response})
+            logger.debug({'event_id': event.event_id, 'room': room.room_id, 'messages': messages, 'response': response})
         z = text_response.replace("\n", "\\n")
         if isinstance(command, str):
             x = command.replace("\n", "\\n")
@@ -182,6 +221,7 @@ async def process_chat(client, room, event, command, store, openai, thread_root_
         store.add_event_id(event.event_id)
         if not isinstance(resp, RoomSendResponse):
             logger.critical(f'Failed to respond to event {event.event_id} in room {room.room_id}:\n{vars(resp)}')
+            await react_to_event(client, room.room_id, event.event_id, '❌')
         else:
             store.add_event_id(resp.event_id)
 

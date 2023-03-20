@@ -1,6 +1,8 @@
 # https://github.com/anoadragon453/nio-template
+import asyncio
 import logging
 import time
+from types import ModuleType
 
 from nio import (AsyncClient, InviteMemberEvent, JoinError, MatrixRoom, MegolmEvent, RoomMessageText, UnknownEvent, )
 
@@ -13,7 +15,20 @@ logger = logging.getLogger('MatrixGPT')
 
 
 class Callbacks:
-    def __init__(self, client: AsyncClient, store: Storage, command_prefix: str, openai, reply_in_thread, allowed_to_invite, allowed_to_chat='all', system_prompt: str = None, log_full_response: bool = False, injected_system_prompt: bool = False):
+    def __init__(self,
+                 client: AsyncClient,
+                 store: Storage,
+                 command_prefix: str,
+                 openai_obj: ModuleType,
+                 openai_model: str,
+                 reply_in_thread: bool,
+                 allowed_to_invite: list,
+                 allowed_to_chat: str = 'all',
+                 system_prompt: str = None,
+                 log_full_response: bool = False,
+                 injected_system_prompt: str = False,
+                 openai_temperature: float = 0
+                 ):
         """
         Args:
             client: nio client used to interact with matrix.
@@ -26,7 +41,7 @@ class Callbacks:
         self.store = store
         # self.config = config
         self.command_prefix = command_prefix
-        self.openai = openai
+        self.openai_model = openai_model
         self.startup_ts = time.time_ns() // 1_000_000
         self.reply_in_thread = reply_in_thread
         self.allowed_to_invite = allowed_to_invite if allowed_to_invite else []
@@ -34,6 +49,8 @@ class Callbacks:
         self.system_prompt = system_prompt
         self.log_full_response = log_full_response
         self.injected_system_prompt = injected_system_prompt
+        self.openai_obj = openai_obj
+        self.openai_temperature = openai_temperature
 
     async def message(self, room: MatrixRoom, event: RoomMessageText) -> None:
         """Callback for when a message event is received
@@ -44,11 +61,6 @@ class Callbacks:
             event: The event defining the message.
         """
         # Extract the message text
-        msg = event.body.strip().strip('\n')
-
-        logger.debug(f"Bot message received for room {room.display_name} | "
-                     f"{room.user_name(event.sender)}: {msg}")
-
         await self.client.room_read_markers(room.room_id, event.event_id, event.event_id)
 
         # Ignore messages from ourselves
@@ -59,8 +71,15 @@ class Callbacks:
             return
 
         if event.server_timestamp < self.startup_ts:
-            logger.info(f'Skipping event as it was sent before startup time: {event.event_id}')
+            logger.debug(f'Skipping event as it was sent before startup time: {event.event_id}')
             return
+        if self.store.check_seen_event(event.event_id):
+            logger.debug(f'Skipping seen event: {event.event_id}')
+            return
+
+        msg = event.body.strip().strip('\n')
+
+        logger.debug(f"Bot message received from {event.sender} in {room.room_id} --> {msg}")
 
         # if room.member_count > 2:
         #     has_command_prefix =
@@ -72,7 +91,7 @@ class Callbacks:
         # room.member_count > 2 ... we assume a public room
         # room.member_count <= 2 ... we assume a DM
         # General message listener
-        if not msg.startswith(f'{self.command_prefix} ') and is_thread(event) and not self.store.check_seen_event(event.event_id) and (await is_this_our_thread(self.client, room, event, self.command_prefix)):
+        if not msg.startswith(f'{self.command_prefix} ') and is_thread(event) and (await is_this_our_thread(self.client, room, event, self.command_prefix) or room.member_count == 2):
             await self.client.room_typing(room.room_id, typing_state=True, timeout=3000)
             thread_content = await get_thread_content(self.client, room, event)
             api_data = []
@@ -85,18 +104,49 @@ class Callbacks:
                     return
                 else:
                     thread_msg = event.body.strip().strip('\n')
-                    api_data.append({'role': 'assistant' if event.sender == self.client.user_id else 'user', 'content': thread_msg if not thread_msg.startswith(self.command_prefix) else thread_msg[
-                                                                                                                                                                                          len(self.command_prefix):].strip()})  # if len(thread_content) >= 2 and thread_content[0].body.startswith(self.command_prefix):  # if thread_content[len(thread_content) - 2].sender == self.client.user
+                    api_data.append(
+                        {
+                            'role': 'assistant' if event.sender == self.client.user_id else 'user',
+                            'content': thread_msg if not thread_msg.startswith(self.command_prefix) else thread_msg[len(self.command_prefix):].strip()
+                        })  # if len(thread_content) >= 2 and thread_content[0].body.startswith(self.command_prefix):  # if thread_content[len(thread_content) - 2].sender == self.client.user
 
-            # message = Message(self.client, self.store, msg, room, event, self.reply_in_thread)
-            # await message.process()
-            # api_data.append({'role': 'user', 'content': msg})
-            await process_chat(self.client, room, event, api_data, self.store, self.openai, thread_root_id=thread_content[0].event_id, system_prompt=self.system_prompt, log_full_response=self.log_full_response, injected_system_prompt=self.injected_system_prompt)
+            # TODO: process_chat() will set typing as false after generating.
+            # TODO: If there is still another query in-progress that typing state will be overwritten by the one that just finished.
+            async def inner():
+                await process_chat(
+                    self.client,
+                    room,
+                    event,
+                    api_data,
+                    self.store,
+                    openai_obj=self.openai_obj,
+                    openai_model=self.openai_model,
+                    openai_temperature=self.openai_temperature,
+                    thread_root_id=thread_content[0].event_id,
+                    system_prompt=self.system_prompt,
+                    log_full_response=self.log_full_response,
+                    injected_system_prompt=self.injected_system_prompt
+                )
+
+            asyncio.get_event_loop().create_task(inner())
             return
-        elif msg.startswith(f'{self.command_prefix} ') or room.member_count == 2:
+        elif (msg.startswith(f'{self.command_prefix} ') or room.member_count == 2) and not is_thread(event):
             # Otherwise if this is in a 1-1 with the bot or features a command prefix, treat it as a command.
             msg = msg if not msg.startswith(self.command_prefix) else msg[len(self.command_prefix):].strip()  # Remove the command prefix
-            command = Command(self.client, self.store, msg, room, event, self.openai, self.reply_in_thread, system_prompt=self.system_prompt, injected_system_prompt=self.injected_system_prompt, log_full_response=self.log_full_response)
+            command = Command(
+                self.client,
+                self.store,
+                msg,
+                room,
+                event,
+                openai_obj=self.openai_obj,
+                openai_model=self.openai_model,
+                openai_temperature=self.openai_temperature,
+                reply_in_thread=self.reply_in_thread,
+                system_prompt=self.system_prompt,
+                injected_system_prompt=self.injected_system_prompt,
+                log_full_response=self.log_full_response
+            )
             await command.process()
 
     async def invite(self, room: MatrixRoom, event: InviteMemberEvent) -> None:
@@ -104,16 +154,11 @@ class Callbacks:
 
         Args:
             room: The room that we are invited to.
-
             event: The invite event.
         """
         if not check_authorized(event.sender, self.allowed_to_invite):
             logger.info(f"Got invite to {room.room_id} from {event.sender} but rejected.")
             return
-
-        # if event.sender not in self.allowed_to_invite:
-        #     logger.info(f"Got invite to {room.room_id} from {event.sender} but rejected.")
-        #     return
 
         logger.debug(f"Got invite to {room.room_id} from {event.sender}.")
 
@@ -123,12 +168,10 @@ class Callbacks:
             if type(result) == JoinError:
                 logger.error(f"Error joining room {room.room_id} (attempt %d): %s", attempt, result.message, )
             else:
-                break
+                logger.info(f"Joined via invite: {room.room_id}")
+                return
         else:
             logger.error("Unable to join room: %s", room.room_id)
-
-        # Successfully joined room
-        logger.info(f"Joined via invite: {room.room_id}")
 
     async def invite_event_filtered_callback(self, room: MatrixRoom, event: InviteMemberEvent) -> None:
         """
@@ -138,7 +181,6 @@ class Callbacks:
         This makes sure we only call `callbacks.invite` with our own invite events.
         """
         if event.state_key == self.client.user_id:
-            # This is our own membership (invite) event
             await self.invite(room, event)
 
     # async def _reaction(
@@ -188,7 +230,6 @@ class Callbacks:
 
         Args:
             room: The room that the event that we were unable to decrypt is in.
-
             event: The encrypted event that we were unable to decrypt.
         """
         # logger.error(f"Failed to decrypt event '{event.event_id}' in room '{room.room_id}'!"

@@ -17,6 +17,12 @@ Then invite your bot and start a chat by prefixing your message with `!c`. The b
 
 I included a sample Systemd service.
 
+## Use
+
+Invite the bot to your room and query it with the command `!c` (this can be changed in the config.)
+
+Don't try to use two bots in the same thread.
+
 ## Encryption
 
 This bot supports encryption. I recommend using [Pantalaimon](https://github.com/matrix-org/pantalaimon/) to manage encryption keys as the

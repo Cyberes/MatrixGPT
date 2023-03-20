@@ -23,7 +23,6 @@ script_directory = os.path.abspath(os.path.dirname(__file__))
 
 logging.basicConfig()
 logger = logging.getLogger('MatrixGPT')
-logger.setLevel(logging.INFO)
 
 parser = argparse.ArgumentParser(description='MatrixGPT Bot')
 parser.add_argument('--config', default=Path(script_directory, 'config.yaml'), help='Path to config.yaml if it is not located next to this executable.')
@@ -41,7 +40,7 @@ else:
         print(f'Failed to load config file: {e}')
         sys.exit(1)
 
-# Test config
+# Lazy way to validate config
 check_config_value_exists(config_data, 'bot_auth', dict)
 check_config_value_exists(config_data['bot_auth'], 'username')
 check_config_value_exists(config_data['bot_auth'], 'password')
@@ -50,9 +49,14 @@ check_config_value_exists(config_data['bot_auth'], 'store_path')
 check_config_value_exists(config_data, 'allowed_to_chat')
 check_config_value_exists(config_data, 'allowed_to_invite', allow_empty=True)
 check_config_value_exists(config_data, 'command_prefix')
-check_config_value_exists(config_data, 'openai_api_key')
-check_config_value_exists(config_data, 'openai_model')
 check_config_value_exists(config_data, 'data_storage')
+
+check_config_value_exists(config_data, 'logging')
+check_config_value_exists(config_data['logging'], 'log_level')
+
+check_config_value_exists(config_data, 'openai')
+check_config_value_exists(config_data['openai'], 'api_key')
+check_config_value_exists(config_data['openai'], 'model')
 
 
 # check_config_value_exists(config_data, 'autojoin_rooms')
@@ -66,6 +70,18 @@ def retry(msg=None):
 
 
 async def main():
+    if config_data['logging']['log_level'] == 'info':
+        log_level = logging.INFO
+    elif config_data['logging']['log_level'] == 'debug':
+        log_level = logging.DEBUG
+    elif config_data['logging']['log_level'] == 'warning':
+        log_level = logging.WARNING
+    elif config_data['logging']['log_level'] == 'critical':
+        log_level = logging.CRITICAL
+    else:
+        log_level = logging.INFO
+    logger.setLevel(log_level)
+
     # Logging in with a new device each time seems to fix encryption errors
     device_id = config_data['bot_auth'].get('device_id', str(uuid4()))
 
@@ -79,28 +95,23 @@ async def main():
     )
     client = matrix_helper.client
 
-    openai.api_key = config_data['openai_api_key']
-
-    openai_config = {
-        'model': config_data['openai_model'],
-        'openai': openai
-    }
+    openai.api_key = config_data['openai']['api_key']
 
     storage = Storage(Path(config_data['data_storage'], 'matrixgpt.db'))
 
     # Set up event callbacks
-    callbacks = Callbacks(
-        client,
-        storage,
-        config_data['command_prefix'],
-        openai_config,
-        config_data.get('reply_in_thread', False),
-        config_data['allowed_to_invite'],
-        config_data['allowed_to_chat'],
-        config_data.get('system_prompt'),
-        log_full_response=config_data.get('log_full_response', False),
-        injected_system_prompt=config_data.get('injected_system_prompt', False)
-    )
+    callbacks = Callbacks(client, storage,
+                          openai_obj=openai,
+                          command_prefix=config_data['command_prefix'],
+                          openai_model=config_data['openai']['model'],
+                          reply_in_thread=config_data.get('reply_in_thread', False),
+                          allowed_to_invite=config_data['allowed_to_invite'],
+                          allowed_to_chat=config_data['allowed_to_chat'],
+                          log_full_response=config_data['logging'].get('log_full_response', False),
+                          system_prompt=config_data['openai'].get('system_prompt'),
+                          injected_system_prompt=config_data['openai'].get('injected_system_prompt', False),
+                          openai_temperature=config_data['openai'].get('temperature', 0)
+                          )
     client.add_event_callback(callbacks.message, RoomMessageText)
     client.add_event_callback(callbacks.invite_event_filtered_callback, InviteMemberEvent)
     client.add_event_callback(callbacks.decryption_failure, MegolmEvent)
@@ -141,11 +152,7 @@ async def main():
                 device_list = [x.id for x in devices]
                 if device_id in device_list:
                     device_list.remove(device_id)
-                    x = await client.delete_devices(device_list, {
-                        "type": "m.login.password",
-                        "user": config_data['bot_auth']['username'],
-                        "password": config_data['bot_auth']['password']
-                    })
+                    x = await client.delete_devices(device_list, {"type": "m.login.password", "user": config_data['bot_auth']['username'], "password": config_data['bot_auth']['password']})
                 logger.info(f'Logged out: {device_list}')
 
             await client.sync_forever(timeout=10000, full_state=True)
