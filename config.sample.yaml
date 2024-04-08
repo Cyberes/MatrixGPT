@@ -44,7 +44,7 @@ command:
   - trigger:         '!c4'
 
     # What kind of of API to use.
-    # `openai` or `anthropic`
+    # `openai` or `anth`
     api_type:        openai
 
     # The model to use.
