@@ -83,6 +83,7 @@ class ConfigManager:
         if not self._config.config['openai']['api_key'] and not self._config.config['anthropic']['api_key']:
             raise SchemeValidationError('You need an OpenAI or Anthropic API key')
         self._parsed_config = self._merge_in_list_defaults()
+        # TODO: make sure there aren't duplicate triggers
         self._command_prefixes = self._generate_command_prefixes()
 
     def _merge_in_list_defaults(self):

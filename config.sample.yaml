@@ -40,6 +40,9 @@ allowed_to_invite:
 response_timeout:    120
 
 command:
+  # Define what models respond to what trigger.
+  # Try adding multiple triggers!
+
   # What triggers this model.
   - trigger:         '!c4'
 
