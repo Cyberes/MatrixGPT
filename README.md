@@ -32,8 +32,8 @@ Use `!matrixgpt` to view the bot's help. The bot also responds to `!bots`.
 <br>
 
 - Don't try to use two bots in the same thread.
-- You can DM a bot for a private chat. Don't use the trigger prefix in a DM.
-- The bot will move its read marker when a new message is sent in the room.
+- You can DM a bot for a private chat.
+- The bot will move its read marker whenever a message is sent in the room.
 
 <br>
 

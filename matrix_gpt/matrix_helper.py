@@ -29,7 +29,6 @@ class MatrixClientHelper:
         self.store_path = Path(store_path).absolute().expanduser().resolve()
         self.store_path.mkdir(parents=True, exist_ok=True)
         self.auth_file = self.store_path / (device_id.lower() + '.json')
-
         self.device_name = device_id
         self.client: AsyncClient = AsyncClient(homeserver=self.homeserver, user=self.user_id, config=self.client_config, device_id=device_id)
         self.logger = logging.getLogger('MatrixGPT').getChild('MatrixClientHelper')
@@ -85,8 +84,8 @@ class MatrixClientHelper:
 
     def _read_details_from_disk(self):
         if not self.auth_file.exists():
-            return {}
-        with open(self.auth_file, "r") as f:
+            return {'auth': {}, 'extra': {}}
+        with open(self.auth_file, 'r') as f:
             return json.load(f)
 
     def _write_details_to_disk(self, resp: LoginResponse = None, extra_data: dict = None) -> None:
@@ -165,7 +164,6 @@ class MatrixClientHelper:
                     }
                 }
 
-            # TODO: don't force this to string. what if we want to send an array?
             content["m.matrixgpt"] = {
                 "error": str(extra_error),
                 "msg": str(extra_msg),

@@ -22,33 +22,20 @@ SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 logging.basicConfig()
 logger = logging.getLogger('MatrixGPT')
 
-parser = argparse.ArgumentParser(description='MatrixGPT Bot')
-parser.add_argument('--config', default=Path(SCRIPT_DIR, 'config.yaml'), help='Path to config.yaml if it is not located next to this executable.')
-args = parser.parse_args()
 
-# Load config
-args.config = Path(args.config)
-if not args.config.exists():
-    logger.critical('Config file does not exist:', args.config)
-    sys.exit(1)
+async def main(args):
+    args.config = Path(args.config)
+    if not args.config.exists():
+        logger.critical('Config file does not exist:', args.config)
+        sys.exit(1)
 
-global_config.load(args.config)
-try:
-    global_config.validate()
-except SchemeValidationError as e:
-    logger.critical(f'Config validation error: {e}')
-    sys.exit(1)
+    global_config.load(args.config)
+    try:
+        global_config.validate()
+    except SchemeValidationError as e:
+        logger.critical(f'Config validation error: {e}')
+        sys.exit(1)
 
-
-def retry(msg=None):
-    if msg:
-        logger.warning(f'{msg}, retrying in 15s...')
-    else:
-        logger.warning(f'Retrying in 15s...')
-    time.sleep(15)
-
-
-async def main():
     if global_config['logging']['log_level'] == 'info':
         log_level = logging.INFO
     elif global_config['logging']['log_level'] == 'debug':
@@ -148,9 +135,13 @@ async def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='MatrixGPT Bot')
+    parser.add_argument('--config', default=Path(SCRIPT_DIR, 'config.yaml'), help='Path to config.yaml if it is not located next to this executable.')
+    args = parser.parse_args()
+
     while True:
         try:
-            asyncio.run(main())
+            asyncio.run(main(args))
         except KeyboardInterrupt:
             os.kill(os.getpid(), signal.SIGTERM)
         except Exception:

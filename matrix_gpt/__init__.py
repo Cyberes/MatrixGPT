@@ -1,1 +1,1 @@
-from .matrix import MatrixClientHelper
+from .matrix_helper import MatrixClientHelper
