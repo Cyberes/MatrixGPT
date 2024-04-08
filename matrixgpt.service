@@ -4,8 +4,9 @@ After=network.target
 
 [Service]
 User=matrix-bots
-WorkingDirectory=/opt/MatrixGPT/
-ExecStart=/opt/MatrixGPT/venv/bin/python3 /opt/MatrixGPT/main.py --config /etc/matrixgpt/config.yaml
+WorkingDirectory=/srv/MatrixGPT
+ExecStart=/srv/MatrixGPT/venv/bin/python3 /srv/MatrixGPT/main.py --config /etc/matrixgpt/config.yaml
+SyslogIdentifier=matrixgpt
 Restart=always
 
 [Install]

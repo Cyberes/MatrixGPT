@@ -1,6 +1,7 @@
-matrix-nio[e2e]
-pyyaml
-markdown
-python-olm
-openai
-stopit
+matrix-nio[e2e]==0.24.0
+pyyaml==6.0.1
+markdown==3.6
+python-olm==3.2.16
+openai==1.16.2
+anthropic==0.23.1
+git+https://git.evulid.cc/cyberes/bison.git

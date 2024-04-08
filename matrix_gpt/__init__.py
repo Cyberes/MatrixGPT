@@ -1,1 +1,1 @@
-from .matrix import MatrixNioGPTHelper
+from .matrix import MatrixClientHelper
