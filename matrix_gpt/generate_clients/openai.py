@@ -1,15 +1,18 @@
 from typing import Union
 
+from nio import RoomMessageImage
 from openai import AsyncOpenAI
 
+from matrix_gpt.chat_functions import download_mxc
 from matrix_gpt.config import global_config
 from matrix_gpt.generate_clients.api_client import ApiClient
 from matrix_gpt.generate_clients.command_info import CommandInfo
+from matrix_gpt.image import process_image
 
 
 class OpenAIClient(ApiClient):
-    def __init__(self, api_key: str):
-        super().__init__(api_key)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def _create_client(self, api_base: str = None):
         return AsyncOpenAI(
@@ -20,6 +23,21 @@ class OpenAIClient(ApiClient):
     def append_msg(self, content: str, role: str):
         assert role in [self._HUMAN_NAME, self._BOT_NAME]
         self._context.append({'role': role, 'content': content})
+
+    async def append_img(self, img_event: RoomMessageImage, role: str):
+        assert role in [self._HUMAN_NAME, self._BOT_NAME]
+        img_bytes = await download_mxc(img_event.url, self.client_helper.client)
+        encoded_image = process_image(img_bytes, resize_px=512)
+        self._context.append({
+            "role": role,
+            'content': [{
+                'type': 'image_url',
+                'image_url': {
+                    'url': f"data:image/png;base64,{encoded_image}",
+                    'detail': 'low'
+                }
+            }]
+        })
 
     def assemble_context(self, messages: Union[str, list], system_prompt: str = None, injected_system_prompt: str = None):
         if isinstance(messages, list):

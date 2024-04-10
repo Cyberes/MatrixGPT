@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import time
+from typing import Union
 
-from nio import (AsyncClient, InviteMemberEvent, MatrixRoom, MegolmEvent, RoomMessageText, UnknownEvent)
+from nio import (AsyncClient, InviteMemberEvent, MatrixRoom, MegolmEvent, RoomMessageText, UnknownEvent, RoomMessageImage)
 
 from .chat_functions import check_authorized, is_thread, check_command_prefix
 from .config import global_config
@@ -18,7 +19,7 @@ class MatrixBotCallbacks:
         self.startup_ts = time.time() * 1000
         self.seen_messages = set()
 
-    async def handle_message(self, room: MatrixRoom, requestor_event: RoomMessageText) -> None:
+    async def handle_message(self, room: MatrixRoom, requestor_event: Union[RoomMessageText, RoomMessageImage]) -> None:
         """
         Callback for when a message event is received.
         """
@@ -46,8 +47,8 @@ class MatrixBotCallbacks:
             self.logger.debug(f'Message from {requestor_event.sender} in {room.room_id} --> "{msg}"')
             # Start the task in the background and don't wait for it here or else we'll block everything.
             task = asyncio.create_task(do_reply_threaded_msg(self.client_helper, room, requestor_event))
-        elif command_activated and not is_thread(requestor_event):
-            # Everything else
+        elif isinstance(requestor_event, RoomMessageText) and command_activated and not is_thread(requestor_event):
+            # Everything else. Images do not start threads.
             self.logger.debug(f'Message from {requestor_event.sender} in {room.room_id} --> "{msg}"')
             allowed_to_chat = command_info.allowed_to_chat + global_config['allowed_to_chat']
             if not check_authorized(requestor_event.sender, allowed_to_chat):

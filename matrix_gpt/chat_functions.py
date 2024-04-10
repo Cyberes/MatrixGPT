@@ -1,5 +1,6 @@
 import logging
 from typing import List, Tuple
+from urllib.parse import urlparse
 
 from nio import AsyncClient, Event, MatrixRoom, RoomGetEventResponse, RoomMessageText
 
@@ -36,19 +37,26 @@ async def is_this_our_thread(client: AsyncClient, room: MatrixRoom, event: RoomM
 
 async def get_thread_content(client: AsyncClient, room: MatrixRoom, base_event: RoomMessageText) -> List[Event]:
     messages = []
+
+    # This is the event of the message that was just sent.
     new_event = (await client.room_get_event(room.room_id, base_event.event_id)).event
+
     while True:
         if new_event.source['content'].get('m.relates_to', {}).get('rel_type') == 'm.thread':
+            # Put the event in the messages list only if it's related to the thread we're parsing.
             messages.append(new_event)
         else:
             break
+        # Fetch the next event.
         new_event = (await client.room_get_event(
             room.room_id,
             new_event.source['content']['m.relates_to']['m.in_reply_to']['event_id'])
                      ).event
+
+    # Put the root event in the array.
     messages.append((await client.room_get_event(
         room.room_id, base_event.source['content']['m.relates_to']['event_id'])
-                     ).event)  # put the root event in the array
+                     ).event)
     messages.reverse()
     return messages
 
@@ -77,3 +85,12 @@ def check_authorized(string, to_check):
         return output
     else:
         raise Exception
+
+
+async def download_mxc(url: str, client: AsyncClient) -> bytes:
+    mxc = urlparse(url)
+    response = await client.download(mxc.netloc, mxc.path.strip("/"))
+    if hasattr(response, "body"):
+        return response.body
+    else:
+        return b''

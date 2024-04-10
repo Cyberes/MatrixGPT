@@ -5,6 +5,8 @@ _Chatbots for Matrix._
 This bot supports OpenAI, Anthropic, and locally hosted models that use an OpenAI-compatible endpoint. It can run multiple different models using
 different triggers, such as `!c4` for GPT4 and `!ca` for Anthropic, all through the same bot.
 
+OpenAI and Anthropic vision is supported.
+
 <br>
 
 ## Install
@@ -43,3 +45,8 @@ The bot can give helpful reactions:
 - 🕒 means the API timed out.
 - ❌ means the bot encountered an exception.
 - ❌ 🔐 means there was a decryption failure.
+
+## TODO
+
+- [ ] Dalle bot
+- [ ] Fix the typing indicator being removed when two responses are generating

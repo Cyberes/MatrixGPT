@@ -1,7 +1,7 @@
 .idea
-*-store/
-*.yaml
-!config.sample.yaml
+bot-store/
+config.yaml
+config.yml
 
 # ---> Python
 # Byte-compiled / optimized / DLL files

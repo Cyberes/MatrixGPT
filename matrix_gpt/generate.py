@@ -30,7 +30,7 @@ async def generate_ai_response(
     try:
         await client.room_typing(room.room_id, typing_state=True, timeout=global_config['response_timeout'] * 1000)
 
-        api_client = api_client_helper.get_client(command_info.api_type)
+        api_client = api_client_helper.get_client(command_info.api_type, client_helper)
         messages = api_client.assemble_context(msg, system_prompt=command_info.system_prompt, injected_system_prompt=command_info.injected_system_prompt)
 
         response = None
@@ -77,9 +77,18 @@ async def generate_ai_response(
 
         # Logging
         if global_config['logging']['log_full_response']:
-            logger.debug(
-                {'event_id': event.event_id, 'room': room.room_id, 'messages': messages, 'response': response}
-            )
+            data = {'event_id': event.event_id, 'room': room.room_id, 'messages': messages, 'response': response}
+            # Remove images from the logged data.
+            for i in range(len(data['messages'])):
+                if isinstance(data['messages'][i]['content'], list):
+                    # Images are always sent as lists
+                    if data['messages'][i]['content'][0].get('source', {}).get('media_type'):
+                        # Anthropic
+                        data['messages'][i]['content'][0]['source']['data'] = '...'
+                    elif data['messages'][i]['content'][0].get('image_url'):
+                        # OpenAI
+                        data['messages'][i]['content'][0]['image_url']['url'] = '...'
+            logger.debug(data)
         z = text_response.replace("\n", "\\n")
         logger.info(f'Reply to {event.event_id} --> {command_info.model} responded with "{z}"')
 

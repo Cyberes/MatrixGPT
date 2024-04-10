@@ -50,7 +50,7 @@ async def do_reply_threaded_msg(client_helper: MatrixClientHelper, room: MatrixR
         await client.room_typing(room.room_id, typing_state=True, timeout=30000)
 
         thread_content = await get_thread_content(client, room, requestor_event)
-        api_client = api_client_helper.get_client(command_info.api_type)
+        api_client = api_client_helper.get_client(command_info.api_type, client_helper)
         for event in thread_content:
             if isinstance(event, MegolmEvent):
                 await client_helper.send_text_to_room(
@@ -64,11 +64,15 @@ async def do_reply_threaded_msg(client_helper: MatrixClientHelper, room: MatrixR
                 await client.room_typing(room.room_id, typing_state=False, timeout=1000)
                 return
             else:
-                thread_msg = event.body.strip().strip('\n')
-                api_client.append_msg(
-                    role=api_client.BOT_NAME if event.sender == client.user_id else api_client.HUMAN_NAME,
-                    content=thread_msg if not check_command_prefix(thread_msg)[0] else thread_msg[len(sent_command_prefix):].strip()
-                )
+                role = api_client.BOT_NAME if event.sender == client.user_id else api_client.HUMAN_NAME
+                if isinstance(event, RoomMessageText):
+                    thread_msg = event.body.strip().strip('\n')
+                    api_client.append_msg(
+                        role=role,
+                        content=thread_msg if not check_command_prefix(thread_msg)[0] else thread_msg[len(sent_command_prefix):].strip(),
+                    )
+                elif command_info.vision:
+                    await api_client.append_img(event, role)
 
         await generate_ai_response(
             client_helper=client_helper,
@@ -113,11 +117,12 @@ async def sound_off(room: MatrixRoom, event: RoomMessageText, client_helper: Mat
 
 `!matrixgpt`  -  show this help message.\n\n"""
     for command in global_config['command']:
-        max_tokens = command['max_tokens'] if command['max_tokens'] > 0 else 'max'
+        max_tokens = f' Max tokens: {command["max_tokens"]}.' if command['max_tokens'] > 0 else ''
         system_prompt_text = f" System prompt: yes." if command['system_prompt'] else ''
         injected_system_prompt_text = f" Injected system prompt: yes." if command['injected_system_prompt'] else ''
         help_text = f" ***{command['help'].strip('.')}.***" if command['help'] else ''
-        text_response = text_response + f"`{command['trigger']}`  -  Model: {command['model']}. Temperature: {command['temperature']}. Max tokens: {max_tokens}.{system_prompt_text}{injected_system_prompt_text}{help_text}\n\n"
+        vision_text = ' Vision: yes.' if command['vision'] else ''
+        text_response = text_response + f"`{command['trigger']}`  -  Model: {command['model']}. Temperature: {command['temperature']}.{max_tokens}{vision_text}{system_prompt_text}{injected_system_prompt_text}{help_text}\n\n"
     return await client_helper.send_text_to_room(
         room.room_id,
         text_response,

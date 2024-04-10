@@ -11,7 +11,7 @@ from pathlib import Path
 
 from aiohttp import ClientConnectionError, ServerDisconnectedError
 from bison.errors import SchemeValidationError
-from nio import InviteMemberEvent, JoinResponse, MegolmEvent, RoomMessageText, UnknownEvent
+from nio import InviteMemberEvent, JoinResponse, MegolmEvent, RoomMessageText, UnknownEvent, RoomMessageImage
 
 from matrix_gpt import MatrixClientHelper
 from matrix_gpt.callbacks import MatrixBotCallbacks
@@ -79,7 +79,7 @@ async def main(args):
 
     # Set up event callbacks
     callbacks = MatrixBotCallbacks(client=client_helper)
-    client.add_event_callback(callbacks.handle_message, RoomMessageText)
+    client.add_event_callback(callbacks.handle_message, (RoomMessageText, RoomMessageImage))
     client.add_event_callback(callbacks.handle_invite, InviteMemberEvent)
     client.add_event_callback(callbacks.decryption_failure, MegolmEvent)
     client.add_event_callback(callbacks.unknown, UnknownEvent)

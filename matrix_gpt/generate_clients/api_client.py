@@ -1,5 +1,8 @@
 from typing import Union
 
+from nio import RoomMessageImage
+
+from matrix_gpt import MatrixClientHelper
 from matrix_gpt.generate_clients.command_info import CommandInfo
 
 
@@ -7,8 +10,9 @@ class ApiClient:
     _HUMAN_NAME = 'user'
     _BOT_NAME = 'assistant'
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, client_helper: MatrixClientHelper):
         self.api_key = api_key
+        self.client_helper = client_helper
         self._context = []
 
     def _create_client(self, base_url: str = None):
@@ -17,7 +21,13 @@ class ApiClient:
     def assemble_context(self, messages: Union[str, list], system_prompt: str = None, injected_system_prompt: str = None):
         raise NotImplementedError
 
+    def generate_text_msg(self, content: str, role: str):
+        raise NotImplementedError
+
     def append_msg(self, content: str, role: str):
+        raise NotImplementedError
+
+    async def append_img(self, img_event: RoomMessageImage, role: str):
         raise NotImplementedError
 
     async def generate(self, command_info: CommandInfo):

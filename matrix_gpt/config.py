@@ -31,6 +31,7 @@ config_scheme = bison.Scheme(
         bison.Option('system_prompt', field_type=str, default=None),
         bison.Option('injected_system_prompt', field_type=str, default=None),
         bison.Option('api_base', field_type=[str, NoneType], default=None),
+        bison.Option('vision', field_type=bool, default=False),
         bison.Option('help', field_type=[str, NoneType], default=None),
     )),
     bison.DictOption('openai', scheme=bison.Scheme(
@@ -56,6 +57,7 @@ DEFAULT_LISTS = {
         'system_prompt': None,
         'injected_system_prompt': None,
         'api_base': None,
+        'vision': False,
         'help': None,
     }
 }
@@ -83,7 +85,15 @@ class ConfigManager:
         if not self._config.config['openai']['api_key'] and not self._config.config['anthropic']['api_key']:
             raise SchemeValidationError('You need an OpenAI or Anthropic API key')
         self._parsed_config = self._merge_in_list_defaults()
-        # TODO: make sure there aren't duplicate triggers
+
+        # Make sure there aren't duplicate triggers
+        existing_triggers = []
+        for item in self._config.config['command']:
+            trigger = item['trigger']
+            if trigger in existing_triggers:
+                raise SchemeValidationError(f'Duplicate trigger {trigger}')
+            existing_triggers.append(trigger)
+
         self._command_prefixes = self._generate_command_prefixes()
 
     def _merge_in_list_defaults(self):

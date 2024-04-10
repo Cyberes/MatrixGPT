@@ -77,6 +77,10 @@ command:
     # Custom OpenAI endpoint. OpenAI only.
     # api_base:      https://example.com/openai/v1
 
+    # Enable vision on this model.
+    # Bot can only view images that are in threads. Threads cannot be started with images.
+    # vision: false
+
     # Bot's description, shown when running `!matrixgpt`.
     # help:            A helpful assistant.
 
