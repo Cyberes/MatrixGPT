@@ -15,7 +15,7 @@ class AnthropicApiClient(ApiClient):
 
     def _create_client(self, base_url: str = None):
         return AsyncAnthropic(
-            api_key=self.api_key
+            api_key=self._api_key
         )
 
     def assemble_context(self, messages: Union[str, list], system_prompt: str = None, injected_system_prompt: str = None):
@@ -50,7 +50,7 @@ class AnthropicApiClient(ApiClient):
 
     async def append_img(self, img_event: RoomMessageImage, role: str):
         assert role in [self._HUMAN_NAME, self._BOT_NAME]
-        img_bytes = await download_mxc(img_event.url, self.client_helper.client)
+        img_bytes = await download_mxc(img_event.url, self._client_helper.client)
         encoded_image = process_image(img_bytes, resize_px=784)
         self._context.append({
             "role": role,

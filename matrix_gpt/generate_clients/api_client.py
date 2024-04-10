@@ -11,12 +11,15 @@ class ApiClient:
     _BOT_NAME = 'assistant'
 
     def __init__(self, api_key: str, client_helper: MatrixClientHelper):
-        self.api_key = api_key
-        self.client_helper = client_helper
+        self._api_key = api_key
+        self._client_helper = client_helper
         self._context = []
 
     def _create_client(self, base_url: str = None):
         raise NotImplementedError
+
+    def check_ignore_request(self):
+        return False
 
     def assemble_context(self, messages: Union[str, list], system_prompt: str = None, injected_system_prompt: str = None):
         raise NotImplementedError

@@ -5,6 +5,8 @@ from types import NoneType
 import bison
 from bison.errors import SchemeValidationError
 
+VALID_API_TYPES = ['openai', 'anthropic', 'copilot']
+
 config_scheme = bison.Scheme(
     bison.Option('store_path', default='bot-store/', field_type=str),
     bison.DictOption('auth', scheme=bison.Scheme(
@@ -21,7 +23,7 @@ config_scheme = bison.Scheme(
     bison.Option('response_timeout', default=120, field_type=int),
     bison.ListOption('command', required=True, member_scheme=bison.Scheme(
         bison.Option('trigger', field_type=str, required=True),
-        bison.Option('api_type', field_type=str, choices=['openai', 'anth'], required=True),
+        bison.Option('api_type', field_type=str, choices=VALID_API_TYPES, required=True),
         bison.Option('model', field_type=str, required=True),
         bison.Option('max_tokens', field_type=int, default=0),
         bison.Option('temperature', field_type=[int, float], default=0.5),
@@ -38,6 +40,9 @@ config_scheme = bison.Scheme(
         bison.Option('api_key', field_type=[str, NoneType], default=None, required=False),
     )),
     bison.DictOption('anthropic', scheme=bison.Scheme(
+        bison.Option('api_key', field_type=[str, NoneType], required=False, default=None),
+    )),
+    bison.DictOption('copilot', scheme=bison.Scheme(
         bison.Option('api_key', field_type=[str, NoneType], required=False, default=None),
     )),
     bison.DictOption('logging', scheme=bison.Scheme(
@@ -82,9 +87,17 @@ class ConfigManager:
     def validate(self):
         assert not self._validated
         self._config.validate()
-        if not self._config.config['openai']['api_key'] and not self._config.config['anthropic']['api_key']:
-            raise SchemeValidationError('You need an OpenAI or Anthropic API key')
+        config_api_keys = 0
+        for api in VALID_API_TYPES:
+            if self._config.config[api].get('api_key'):
+                config_api_keys += 1
+        if config_api_keys < 1:
+            raise SchemeValidationError('You need an API key')
         self._parsed_config = self._merge_in_list_defaults()
+
+        for item in self._config.config['command']:
+            if item['api_type'] == 'copilot' and item['model'] != 'copilot':
+                raise SchemeValidationError('The Copilot model type must be set to `copilot`')
 
         # Make sure there aren't duplicate triggers
         existing_triggers = []
@@ -119,7 +132,7 @@ class ConfigManager:
         command_prefixes = {}
         for item in self._parsed_config['command']:
             command_prefixes[item['trigger']] = item
-            if item['api_type'] == 'anth' and item.get('max_tokens', 0) < 1:
+            if item['api_type'] == 'anthropic' and item.get('max_tokens', 0) < 1:
                 raise SchemeValidationError(f'Anthropic requires `max_tokens`. See <https://support.anthropic.com/en/articles/7996856-what-is-the-maximum-prompt-length>')
 
         return command_prefixes

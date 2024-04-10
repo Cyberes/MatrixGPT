@@ -122,7 +122,13 @@ async def sound_off(room: MatrixRoom, event: RoomMessageText, client_helper: Mat
         injected_system_prompt_text = f" Injected system prompt: yes." if command['injected_system_prompt'] else ''
         help_text = f" ***{command['help'].strip('.')}.***" if command['help'] else ''
         vision_text = ' Vision: yes.' if command['vision'] else ''
-        text_response = text_response + f"`{command['trigger']}`  -  Model: {command['model']}. Temperature: {command['temperature']}.{max_tokens}{vision_text}{system_prompt_text}{injected_system_prompt_text}{help_text}\n\n"
+
+        if command['model'] != 'copilot':
+            text_response = text_response + f"`{command['trigger']}`  -  Model: {command['model']}. Temperature: {command['temperature']}.{max_tokens}{vision_text}{system_prompt_text}{injected_system_prompt_text}{help_text}\n\n"
+        else:
+            # Copilot is very basic.
+            # TODO: make sure to update this if Copilot gets vision support.
+            text_response = text_response + f"`{command['trigger']}`  -  Model: {command['model']}.{help_text}\n\n"
     return await client_helper.send_text_to_room(
         room.room_id,
         text_response,

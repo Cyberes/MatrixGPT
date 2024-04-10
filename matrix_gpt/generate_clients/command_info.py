@@ -1,10 +1,10 @@
-from matrix_gpt.config import global_config
+from matrix_gpt.config import global_config, VALID_API_TYPES
 
 
 class CommandInfo:
     def __init__(self, trigger: str, api_type: str, model: str, max_tokens: int, temperature: float, allowed_to_chat: list, allowed_to_thread: list, allowed_to_invite: list, system_prompt: str, injected_system_prompt: str, api_base: str = None, vision: bool = False, help: str = None):
         self.trigger = trigger
-        assert api_type in ['openai', 'anth']
+        assert api_type in VALID_API_TYPES
         self.api_type = api_type
         self.model = model
         self.max_tokens = max_tokens

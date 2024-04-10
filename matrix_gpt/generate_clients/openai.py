@@ -16,7 +16,7 @@ class OpenAIClient(ApiClient):
 
     def _create_client(self, api_base: str = None):
         return AsyncOpenAI(
-            api_key=self.api_key,
+            api_key=self._api_key,
             base_url=api_base
         )
 
@@ -26,7 +26,7 @@ class OpenAIClient(ApiClient):
 
     async def append_img(self, img_event: RoomMessageImage, role: str):
         assert role in [self._HUMAN_NAME, self._BOT_NAME]
-        img_bytes = await download_mxc(img_event.url, self.client_helper.client)
+        img_bytes = await download_mxc(img_event.url, self._client_helper.client)
         encoded_image = process_image(img_bytes, resize_px=512)
         self._context.append({
             "role": role,

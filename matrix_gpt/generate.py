@@ -33,10 +33,16 @@ async def generate_ai_response(
         api_client = api_client_helper.get_client(command_info.api_type, client_helper)
         messages = api_client.assemble_context(msg, system_prompt=command_info.system_prompt, injected_system_prompt=command_info.injected_system_prompt)
 
+        if api_client.check_ignore_request():
+            logger.debug(f'Reply to {event.event_id} was ignored by the model "{command_info.model}".')
+            await client.room_typing(room.room_id, typing_state=False, timeout=1000)
+            return
+
         response = None
         try:
             task = asyncio.create_task(api_client.generate(command_info))
             for task in asyncio.as_completed([task], timeout=global_config['response_timeout']):
+                # TODO: add a while loop and heartbeat the background thread
                 try:
                     response = await task
                     break

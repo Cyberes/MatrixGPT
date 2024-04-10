@@ -84,9 +84,6 @@ async def main(args):
     client.add_event_callback(callbacks.decryption_failure, MegolmEvent)
     client.add_event_callback(callbacks.unknown, UnknownEvent)
 
-    # TODO: multimedia mode?
-    # RoomMessageImage
-
     # Keep trying to reconnect on failure (with some time in-between)
     while True:
         try:

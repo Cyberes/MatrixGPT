@@ -3,6 +3,7 @@ import logging
 from matrix_gpt import MatrixClientHelper
 from matrix_gpt.config import global_config
 from matrix_gpt.generate_clients.anthropic import AnthropicApiClient
+from matrix_gpt.generate_clients.copilot import CopilotClient
 from matrix_gpt.generate_clients.openai import OpenAIClient
 
 """
@@ -23,12 +24,15 @@ class ApiClientManager:
         """
         self._openai_api_key = global_config['openai'].get('api_key', 'MatrixGPT')
         self._anth_api_key = global_config['anthropic'].get('api_key')
+        self._copilot_cookie = global_config['copilot'].get('api_key')
 
     def get_client(self, mode: str, client_helper: MatrixClientHelper):
         if mode == 'openai':
             return self.openai_client(client_helper)
-        elif mode == 'anth':
+        elif mode == 'anthropic':
             return self.anth_client(client_helper)
+        elif mode == 'copilot':
+            return self.copilot_client(client_helper)
         else:
             raise Exception
 
@@ -50,6 +54,16 @@ class ApiClientManager:
         return AnthropicApiClient(
             api_key=self._anth_api_key,
             client_helper=client_helper
+        )
+
+    def copilot_client(self, client_helper):
+        self._set_from_config()
+        if not self._copilot_cookie:
+            self.logger.error('Missing a Copilot API key!')
+            return None
+        return CopilotClient(
+            api_key=self._copilot_cookie,
+            client_helper=client_helper,
         )
 
 
