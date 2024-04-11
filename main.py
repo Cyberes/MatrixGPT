@@ -65,6 +65,10 @@ async def main(args):
 
     logger.debug(f'Command Prefixes: {[k for k, v in global_config.command_prefixes.items()]}')
 
+    logger.info(f"OpenAI API key: {'yes' if global_config['openai'].get('api_key') else 'no'}")
+    logger.info(f"Anthropic API key: {'yes' if global_config['anthropic'].get('api_key') else 'no'}")
+    logger.info(f"Copilot API key: {'yes' if global_config['copilot'].get('api_key') else 'no'}")
+
     client_helper = MatrixClientHelper(
         user_id=global_config['auth']['username'],
         passwd=global_config['auth']['password'],

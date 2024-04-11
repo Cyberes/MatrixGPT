@@ -3,8 +3,7 @@
 _Chatbots for Matrix._
 
 This bot supports OpenAI, Anthropic, and locally hosted models that use an OpenAI-compatible endpoint. It can run
-multiple different models using
-different triggers, such as `!c4` for GPT4 and `!ca` for Anthropic, all through the same bot.
+multiple different models using different triggers, such as `!c4` for GPT4 and `!ca` for Anthropic, all through the same bot.
 
 **Supported Services**
 
@@ -27,8 +26,9 @@ different triggers, such as `!c4` for GPT4 and `!ca` for Anthropic, all through 
    and/or Anthropic API keys.
 3. Start the bot with `python3 main.py`
 
-[Pantalaimon](https://github.com/matrix-org/pantalaimon) is **required** for the bot to be able to talk in encrypted
-rooms.
+[Pantalaimon](https://github.com/matrix-org/pantalaimon) is **required** for the bot to be able to talk in encrypted rooms.
+
+If you are using Copilot, please read the extra documentation: [docs/Copilot.md](docs/Copilot.md)
 
 I included a sample Systemd service (`matrixgpt.service`).
 
@@ -42,7 +42,7 @@ Use `!matrixgpt` to view the bot's help. The bot also responds to `!bots`.
 <br>
 
 - Don't try to use two bots in the same thread.
-- You can DM a bot for a private chat.
+- You can DM the bot for a private chat.
 - The bot will move its read marker whenever a message is sent in the room.
 
 <br>
@@ -56,5 +56,9 @@ The bot can give helpful reactions:
 
 ## TODO
 
+- [ ] Add our own context mechanism to Copilot
 - [ ] Dalle bot
-- [ ] Fix the typing indicator being removed when two responses are generating
+- [ ] Improve error messages sent with reactions to narrow down where the issue occurred.
+- [ ] Allow replying to an image post which will give a vision model an image + text on the first message.
+- [ ] Fix the typing indicator being removed when two responses are generating.
+- [ ] ~~Add vision to Copilot~~ (not doing, API to unstable).

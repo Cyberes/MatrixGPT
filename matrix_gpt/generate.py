@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import traceback
 from typing import Union
@@ -21,17 +22,35 @@ async def generate_ai_response(
         client_helper: MatrixClientHelper,
         room: MatrixRoom,
         event: RoomMessageText,
-        msg: Union[str, list],
+        context: Union[str, list],
         command_info: CommandInfo,
         thread_root_id: str = None,
+        matrix_gpt_data: str = None
 ):
     assert isinstance(command_info, CommandInfo)
     client = client_helper.client
     try:
         await client.room_typing(room.room_id, typing_state=True, timeout=global_config['response_timeout'] * 1000)
 
-        api_client = api_client_helper.get_client(command_info.api_type, client_helper)
-        messages = api_client.assemble_context(msg, system_prompt=command_info.system_prompt, injected_system_prompt=command_info.injected_system_prompt)
+        api_client = api_client_helper.get_client(command_info.api_type, client_helper, room, event)
+        if not api_client:
+            # If this was None then we were missing an API key for this client type. Error has already been logged.
+            await client_helper.react_to_event(
+                room.room_id,
+                event.event_id,
+                '❌',
+                extra_error=f'No API key for model {command_info.model}' if global_config['send_extra_messages'] else None
+            )
+            await client.room_typing(room.room_id, typing_state=False, timeout=1000)
+            return
+
+        # The input context can be either a string if this is the first message in the thread or a list of all messages in the thread.
+        # Handling this here instead of the caller simplifies things.
+        if isinstance(context, str):
+            context = [{'role': api_client.HUMAN_NAME, 'content': context}]
+
+        # Build the context and do the things that need to be done for our specific API type.
+        api_client.assemble_context(context, system_prompt=command_info.system_prompt, injected_system_prompt=command_info.injected_system_prompt)
 
         if api_client.check_ignore_request():
             logger.debug(f'Reply to {event.event_id} was ignored by the model "{command_info.model}".')
@@ -39,12 +58,13 @@ async def generate_ai_response(
             return
 
         response = None
+        extra_data = None
         try:
-            task = asyncio.create_task(api_client.generate(command_info))
+            task = asyncio.create_task(api_client.generate(command_info, matrix_gpt_data))
             for task in asyncio.as_completed([task], timeout=global_config['response_timeout']):
                 # TODO: add a while loop and heartbeat the background thread
                 try:
-                    response = await task
+                    response, extra_data = await task
                     break
                 except asyncio.TimeoutError:
                     logger.warning(f'Response to event {event.event_id} timed out.')
@@ -81,9 +101,13 @@ async def generate_ai_response(
         # The AI's response.
         text_response = response.strip().strip('\n')
 
+        if not extra_data:
+            extra_data = {}
+
         # Logging
         if global_config['logging']['log_full_response']:
-            data = {'event_id': event.event_id, 'room': room.room_id, 'messages': messages, 'response': response}
+            assembled_context = api_client.context
+            data = {'event_id': event.event_id, 'room': room.room_id, 'messages': assembled_context, 'response': response}
             # Remove images from the logged data.
             for i in range(len(data['messages'])):
                 if isinstance(data['messages'][i]['content'], list):
@@ -94,7 +118,7 @@ async def generate_ai_response(
                     elif data['messages'][i]['content'][0].get('image_url'):
                         # OpenAI
                         data['messages'][i]['content'][0]['image_url']['url'] = '...'
-            logger.debug(data)
+            logger.debug(json.dumps(data))
         z = text_response.replace("\n", "\\n")
         logger.info(f'Reply to {event.event_id} --> {command_info.model} responded with "{z}"')
 
@@ -105,7 +129,8 @@ async def generate_ai_response(
             reply_to_event_id=event.event_id,
             thread=True,
             thread_root_id=thread_root_id if thread_root_id else event.event_id,
-            markdown_convert=True
+            markdown_convert=True,
+            extra_data=extra_data
         )
         await client.room_typing(room.room_id, typing_state=False, timeout=1000)
         if not isinstance(resp, RoomSendResponse):

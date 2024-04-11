@@ -14,15 +14,15 @@ from matrix_gpt.generate_clients.command_info import CommandInfo
 logger = logging.getLogger('MatrixGPT').getChild('HandleActions')
 
 
-async def do_reply_msg(client_helper: MatrixClientHelper, room: MatrixRoom, requestor_event: RoomMessageText, command_info: CommandInfo, command_activated: bool):
+async def do_reply_msg(client_helper: MatrixClientHelper, room: MatrixRoom, requestor_event: RoomMessageText, command_info: CommandInfo):
     try:
         raw_msg = requestor_event.body.strip().strip('\n')
-        msg = raw_msg if not command_activated else raw_msg[len(command_info.trigger):].strip()  # Remove the command prefix
+        msg = raw_msg[len(command_info.trigger):].strip()  # Remove the command prefix
         await generate_ai_response(
             client_helper=client_helper,
             room=room,
             event=requestor_event,
-            msg=msg,
+            context=msg,
             command_info=command_info,
         )
     except Exception:
@@ -34,7 +34,7 @@ async def do_reply_msg(client_helper: MatrixClientHelper, room: MatrixRoom, requ
 async def do_reply_threaded_msg(client_helper: MatrixClientHelper, room: MatrixRoom, requestor_event: RoomMessageText):
     client = client_helper.client
 
-    is_our_thread, sent_command_prefix, command_info = await is_this_our_thread(client, room, requestor_event)
+    is_our_thread, command_info = await is_this_our_thread(client, room, requestor_event)
     if not is_our_thread:  # or room.member_count == 2
         return
 
@@ -50,7 +50,8 @@ async def do_reply_threaded_msg(client_helper: MatrixClientHelper, room: MatrixR
         await client.room_typing(room.room_id, typing_state=True, timeout=30000)
 
         thread_content = await get_thread_content(client, room, requestor_event)
-        api_client = api_client_helper.get_client(command_info.api_type, client_helper)
+        api_client = api_client_helper.get_client(command_info.api_type, client_helper, room, requestor_event)
+        matrix_gpt_data = {}
         for event in thread_content:
             if isinstance(event, MegolmEvent):
                 await client_helper.send_text_to_room(
@@ -69,8 +70,10 @@ async def do_reply_threaded_msg(client_helper: MatrixClientHelper, room: MatrixR
                     thread_msg = event.body.strip().strip('\n')
                     api_client.append_msg(
                         role=role,
-                        content=thread_msg if not check_command_prefix(thread_msg)[0] else thread_msg[len(sent_command_prefix):].strip(),
+                        content=thread_msg if not check_command_prefix(thread_msg)[0] else thread_msg[len(command_info.trigger):].strip(),
                     )
+                    if event.source.get('content', {}).get('m.matrixgpt', {}).get('data'):
+                        matrix_gpt_data = event.source['content']['m.matrixgpt']['data']
                 elif command_info.vision:
                     await api_client.append_img(event, role)
 
@@ -78,9 +81,10 @@ async def do_reply_threaded_msg(client_helper: MatrixClientHelper, room: MatrixR
             client_helper=client_helper,
             room=room,
             event=requestor_event,
-            msg=api_client.context,
+            context=api_client.context,
             command_info=command_info,
-            thread_root_id=thread_content[0].event_id
+            thread_root_id=thread_content[0].event_id,
+            matrix_gpt_data=matrix_gpt_data
         )
     except:
         logger.error(traceback.format_exc())

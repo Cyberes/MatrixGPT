@@ -1,5 +1,3 @@
-from typing import Union
-
 from anthropic import AsyncAnthropic
 from nio import RoomMessageImage
 
@@ -18,18 +16,14 @@ class AnthropicApiClient(ApiClient):
             api_key=self._api_key
         )
 
-    def assemble_context(self, messages: Union[str, list], system_prompt: str = None, injected_system_prompt: str = None):
-        if isinstance(messages, list):
-            messages = messages
-        else:
-            messages = [{"role": self._HUMAN_NAME, "content": [{"type": "text", "text": str(messages)}]}]
-        self._context = messages
-        return messages
+    def assemble_context(self, context: list, system_prompt: str = None, injected_system_prompt: str = None):
+        assert not len(self._context)
+        self._context = context
+        self.verify_context()
 
     def verify_context(self):
         """
-        Verify that the context alternates between the human and assistant, inserting the opposite
-        user type if it does not alternate correctly.
+        Verify that the context alternates between the human and assistant, inserting the opposite user type if it does not alternate correctly.
         """
         i = 0
         while i < len(self._context) - 1:
@@ -51,7 +45,7 @@ class AnthropicApiClient(ApiClient):
     async def append_img(self, img_event: RoomMessageImage, role: str):
         assert role in [self._HUMAN_NAME, self._BOT_NAME]
         img_bytes = await download_mxc(img_event.url, self._client_helper.client)
-        encoded_image = process_image(img_bytes, resize_px=784)
+        encoded_image = await process_image(img_bytes, resize_px=784)
         self._context.append({
             "role": role,
             'content': [{
@@ -64,8 +58,7 @@ class AnthropicApiClient(ApiClient):
             }]
         })
 
-    async def generate(self, command_info: CommandInfo):
-        self.verify_context()
+    async def generate(self, command_info: CommandInfo, matrix_gpt_data: str = None):
         r = await self._create_client().messages.create(
             model=command_info.model,
             max_tokens=None if command_info.max_tokens == 0 else command_info.max_tokens,
@@ -73,4 +66,4 @@ class AnthropicApiClient(ApiClient):
             system='' if not command_info.system_prompt else command_info.system_prompt,
             messages=self.context
         )
-        return r.content[0].text
+        return r.content[0].text, None

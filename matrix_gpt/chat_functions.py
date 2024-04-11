@@ -14,25 +14,25 @@ def is_thread(event: RoomMessageText):
     return event.source['content'].get('m.relates_to', {}).get('rel_type') == 'm.thread'
 
 
-def check_command_prefix(string: str) -> Tuple[bool, str | None, CommandInfo | None]:
+def check_command_prefix(string: str) -> Tuple[bool, CommandInfo | None]:
     for k, v in global_config.command_prefixes.items():
         if string.startswith(f'{k} '):
             command_info = CommandInfo(**v)
-            return True, k, command_info
-    return False, None, None
+            return True, command_info
+    return False,  None
 
 
-async def is_this_our_thread(client: AsyncClient, room: MatrixRoom, event: RoomMessageText) -> Tuple[bool, str | None, CommandInfo | None]:
+async def is_this_our_thread(client: AsyncClient, room: MatrixRoom, event: RoomMessageText) -> Tuple[bool, CommandInfo | None]:
     base_event_id = event.source['content'].get('m.relates_to', {}).get('event_id')
     if base_event_id:
         e = await client.room_get_event(room.room_id, base_event_id)
         if not isinstance(e, RoomGetEventResponse):
             logger.critical(f'Failed to get event in is_this_our_thread(): {vars(e)}')
-            return False, None, None
+            return False, None
         else:
             return check_command_prefix(e.event.body)
     else:
-        return False, None, None
+        return False, None
 
 
 async def get_thread_content(client: AsyncClient, room: MatrixRoom, base_event: RoomMessageText) -> List[Event]:

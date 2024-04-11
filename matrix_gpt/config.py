@@ -44,6 +44,7 @@ config_scheme = bison.Scheme(
     )),
     bison.DictOption('copilot', scheme=bison.Scheme(
         bison.Option('api_key', field_type=[str, NoneType], required=False, default=None),
+        bison.Option('event_encryption_key', field_type=[str, NoneType], required=False, default=None),
     )),
     bison.DictOption('logging', scheme=bison.Scheme(
         bison.Option('log_level', field_type=str, default='info'),
@@ -106,6 +107,9 @@ class ConfigManager:
             if trigger in existing_triggers:
                 raise SchemeValidationError(f'Duplicate trigger {trigger}')
             existing_triggers.append(trigger)
+
+        if self._config.config.get('copilot') and not self._config.config['copilot'].get('event_encryption_key'):
+            raise SchemeValidationError('You must set `event_encryption_key` when using copilot')
 
         self._command_prefixes = self._generate_command_prefixes()
 

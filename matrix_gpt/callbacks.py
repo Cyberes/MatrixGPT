@@ -40,7 +40,7 @@ class MatrixBotCallbacks:
             # Need to track messages manually because the sync background thread may trigger the callback.
             return
         self.seen_messages.add(requestor_event.event_id)
-        command_activated, sent_command_prefix, command_info = check_command_prefix(msg)
+        command_activated, command_info = check_command_prefix(msg)
 
         if not command_activated and is_thread(requestor_event):
             # Threaded messages
@@ -54,7 +54,7 @@ class MatrixBotCallbacks:
             if not check_authorized(requestor_event.sender, allowed_to_chat):
                 await self.client_helper.react_to_event(room.room_id, requestor_event.event_id, '🚫', extra_error='Not allowed to chat.' if global_config['send_extra_messages'] else None)
                 return
-            task = asyncio.create_task(do_reply_msg(self.client_helper, room, requestor_event, command_info, command_activated))
+            task = asyncio.create_task(do_reply_msg(self.client_helper, room, requestor_event, command_info))
 
     async def handle_invite(self, room: MatrixRoom, event: InviteMemberEvent) -> None:
         """Callback for when an invite is received. Join the room specified in the invite.

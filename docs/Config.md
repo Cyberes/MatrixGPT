@@ -69,6 +69,8 @@ command:
 
 ### Bing Copilot
 
+See [Copilot.md](Copilot.md).
+
 ```yaml
 command:
   - trigger: '!cp'
@@ -76,6 +78,7 @@ command:
     api_type: copilot
 copilot:
   api_key: '_C_Auth=; MC1=GUID=....'
+  event_encryption_key: abc123=
 ```
 
 ### Dalle-3

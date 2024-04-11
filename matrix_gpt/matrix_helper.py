@@ -120,7 +120,7 @@ class MatrixClientHelper:
     async def send_text_to_room(self, room_id: str, message: str, notice: bool = False,
                                 markdown_convert: bool = False, reply_to_event_id: Optional[str] = None,
                                 thread: bool = False, thread_root_id: Optional[str] = None, extra_error: Optional[str] = None,
-                                extra_msg: Optional[str] = None) -> Union[RoomSendResponse, ErrorResponse]:
+                                extra_msg: Optional[str] = None, extra_data: Optional[dict] = None) -> Union[RoomSendResponse, ErrorResponse]:
         """Send text to a matrix room.
 
         Args:
@@ -168,6 +168,8 @@ class MatrixClientHelper:
                 "error": str(extra_error),
                 "msg": str(extra_msg),
             }
+            if extra_data:
+                content["m.matrixgpt"].update(extra_data)
         try:
             return await self.client.room_send(room_id, "m.room.message", content, ignore_unverified_devices=True)
         except SendRetryError:

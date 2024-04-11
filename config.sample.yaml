@@ -90,6 +90,13 @@ openai:
 anthropic:
   api_key:           sk-ant-qwerty12345
 
+copilot:
+  api_key: '_C_Auth=; MC1=GUID=....'
+
+  # The key to encrypt metadata attached to events in the room.
+  # Generated using `new-fernet-key.py`
+  event_encryption_key: abc123=
+
 # When an error occurs, send additional metadata with the reaction event.
 send_extra_messages: true
 
